@@ -13,16 +13,23 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 async function generateNarrative(cards: CardInput[], plan: ReturnType<typeof generateAvalanchePlan>, method: string): Promise<string> {
   if (!process.env.ANTHROPIC_API_KEY) return ''
   try {
+    const totalDebt = cards.reduce((s, c) => s + c.balance, 0)
+    const highestApr = Math.max(...cards.map((c) => c.apr))
+    const cardSummary = cards
+      .map((c) => `£${(c.balance / 100).toFixed(0)} at ${c.apr}% APR`)
+      .join(', ')
+
     const msg = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 400,
+      max_tokens: 300,
+      system: 'You are a friendly, encouraging UK debt repayment advisor. Be concise, specific, and positive. Never use jargon. Speak directly to "you".',
       messages: [
         {
           role: 'user',
-          content: `You are a debt repayment advisor. Explain in 3-4 plain English sentences why the ${method} method is recommended for this user.
-Cards: ${JSON.stringify(cards.map(c => ({ apr: c.apr, balance: (c.balance / 100).toFixed(2), id: c.id })))}.
-Plan: payoff in ${plan.payoffMonths} months, saving £${(plan.totalInterestSaved / 100).toFixed(2)} in interest.
-Be encouraging, specific, and avoid jargon.`,
+          content: `My debt: ${cardSummary}. Total: £${(totalDebt / 100).toFixed(0)}.
+Strategy: ${method} method. Payoff: ${plan.payoffMonths} months. Interest saved vs minimums: £${(plan.totalInterestSaved / 100).toFixed(0)}.
+${plan.insufficientBudget ? 'Note: budget is below minimum payments — flag this.' : ''}
+Write 2–3 sentences explaining why this strategy works for my situation and one concrete encouraging fact.`,
         },
       ],
     })
@@ -181,17 +188,31 @@ router.post('/plan/scenario', requireAuth, async (req: AuthenticatedRequest, res
   }
 })
 
-// PATCH /api/repayment/plan/budget
+// PATCH /api/repayment/plan/budget — regenerates plan with new budget
 router.patch('/plan/budget', requireAuth, requireTier('plus'), async (req: AuthenticatedRequest, res: Response) => {
-  const parsed = z.object({ monthlyBudget: z.number().int().positive() }).safeParse(req.body)
+  const parsed = z.object({
+    monthlyBudget: z.number().int().positive(),
+    method: z.enum(['avalanche', 'snowball']).default('avalanche'),
+  }).safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: 'Validation failed' })
     return
   }
-  // Regenerate plan with new budget (reuse generate logic)
-  req.body = { ...req.body, method: 'avalanche' }
-  // Delegate to generate handler via internal call
-  res.json({ data: { message: 'Use POST /plan/generate with updated budget' } })
+  const { monthlyBudget, method } = parsed.data
+  try {
+    const cards = await getCardsForUser(req.user!.id)
+    if (cards.length === 0) { res.status(400).json({ error: 'No cards found' }); return }
+    const plan = method === 'avalanche' ? generateAvalanchePlan(cards, monthlyBudget) : generateSnowballPlan(cards, monthlyBudget)
+    const narrative = await generateNarrative(cards, plan, method)
+    const result = await pool.query(
+      `INSERT INTO repayment_plans (user_id, method, monthly_budget, projected_payoff_date, total_interest_saved, total_interest_paid, payoff_months, narrative, allocations)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, generated_at`,
+      [req.user!.id, method, monthlyBudget, plan.projectedPayoffDate, plan.totalInterestSaved, plan.totalInterestPaid, plan.payoffMonths, narrative, JSON.stringify(plan.allocations)]
+    )
+    res.json({ data: { id: result.rows[0].id, method, monthlyBudget, generatedAt: result.rows[0].generated_at, allocations: plan.allocations, projectedPayoffDate: plan.projectedPayoffDate, totalInterestSaved: plan.totalInterestSaved, totalInterestPaid: plan.totalInterestPaid, payoffMonths: plan.payoffMonths, narrative } })
+  } catch {
+    res.status(500).json({ error: 'Failed to update plan budget' })
+  }
 })
 
 // GET /api/repayment/plan/history

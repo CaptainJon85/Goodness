@@ -19,7 +19,7 @@ export default function RegisterPage() {
     }
     try {
       await register(email, password, name)
-      navigate('/dashboard')
+      navigate('/welcome')
     } catch (err) {
       setError((err as Error).message || 'Registration failed')
     }

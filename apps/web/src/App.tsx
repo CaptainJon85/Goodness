@@ -11,6 +11,7 @@ import CreditScorePage from './pages/CreditScorePage'
 import PricingPage from './pages/PricingPage'
 import SettingsPage from './pages/SettingsPage'
 import VirtualCardPage from './pages/VirtualCardPage'
+import OnboardingPage from './pages/OnboardingPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -25,6 +26,7 @@ export default function App() {
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/welcome" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
 
         {/* Protected */}
         <Route

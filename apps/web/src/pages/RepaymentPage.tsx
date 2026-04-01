@@ -15,7 +15,8 @@ export default function RepaymentPage() {
   const [plan, setPlan] = useState<RepaymentPlan | null>(null)
   const [cards, setCards] = useState<CreditCard[]>([])
   const [method, setMethod] = useState<'avalanche' | 'snowball'>('avalanche')
-  const [budget, setBudget] = useState(50000)  // pence default (£500)
+  const [budget, setBudget] = useState(50000)  // pence (£500 default)
+  const [budgetInput, setBudgetInput] = useState('500')
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,6 +30,7 @@ export default function RepaymentPage() {
         setPlan(p)
         setMethod(p.method)
         setBudget(p.monthlyBudget)
+        setBudgetInput((p.monthlyBudget / 100).toFixed(0))
       }
       setCards(c)
     }).catch(console.error).finally(() => setLoading(false))
@@ -49,8 +51,19 @@ export default function RepaymentPage() {
 
   const calcScenario = useCallback(async (b: number) => {
     const r = await api.repayment.scenario(b, method)
-    return { payoffMonths: r.payoffMonths, totalInterestPaid: r.totalInterestPaid, projectedPayoffDate: r.projectedPayoffDate }
+    return {
+      payoffMonths: r.payoffMonths,
+      totalInterestPaid: r.totalInterestPaid,
+      totalInterestSaved: r.totalInterestSaved,
+      projectedPayoffDate: r.projectedPayoffDate,
+    }
   }, [method])
+
+  function handleBudgetInput(val: string) {
+    setBudgetInput(val)
+    const pence = Math.round(parseFloat(val) * 100)
+    if (!isNaN(pence) && pence > 0) setBudget(pence)
+  }
 
   if (loading) return <div className="py-20"><LoadingSpinner size="lg" /></div>
 
@@ -70,35 +83,41 @@ export default function RepaymentPage() {
           />
         ) : (
           <>
+            {/* Settings card */}
             <div className="card space-y-4">
               <h2 className="font-semibold text-gray-900">Plan settings</h2>
+
               <div>
-                <label className="label">Monthly budget</label>
-                <div className="flex items-center gap-3">
-                  <span className="text-gray-500">£</span>
+                <label className="label">Monthly budget (£)</label>
+                <div className="flex items-center gap-2 max-w-[10rem]">
+                  <span className="text-gray-400 text-sm">£</span>
                   <input
                     type="number"
-                    className="input w-36"
-                    value={(budget / 100).toFixed(0)}
-                    onChange={(e) => setBudget(Math.round(Number(e.target.value) * 100))}
+                    className="input"
+                    value={budgetInput}
+                    onChange={(e) => handleBudgetInput(e.target.value)}
                     min={1}
+                    step={10}
                   />
                 </div>
               </div>
+
               <div>
                 <label className="label">Strategy</label>
-                <MethodToggle method={method} onChange={setMethod} />
+                <MethodToggle method={method} onChange={(m) => { setMethod(m); setPlan(null) }} />
                 <p className="text-xs text-gray-500 mt-2">
                   {method === 'avalanche'
-                    ? 'Avalanche: target highest APR first — minimises total interest paid.'
-                    : 'Snowball: target smallest balance first — builds momentum with quick wins.'}
+                    ? 'Avalanche: clear the highest APR card first — minimises total interest paid.'
+                    : 'Snowball: clear the smallest balance first — quick wins build momentum.'}
                 </p>
               </div>
+
               {error && (
                 <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
                   {error}
                 </div>
               )}
+
               <button onClick={generate} disabled={generating} className="btn-primary">
                 {generating ? 'Generating…' : plan ? 'Regenerate plan' : 'Generate plan'}
               </button>
@@ -121,8 +140,18 @@ export default function RepaymentPage() {
                   </div>
                 </div>
 
+                {/* Scenario modeller — Premium gate */}
                 <FeatureGate requiredTier="premium">
-                  <ScenarioSlider currentBudget={budget} onCalculate={calcScenario} />
+                  <ScenarioSlider
+                    currentBudget={budget}
+                    currentResult={{
+                      payoffMonths: plan.payoffMonths,
+                      totalInterestPaid: plan.totalInterestPaid,
+                      totalInterestSaved: plan.totalInterestSaved,
+                      projectedPayoffDate: plan.projectedPayoffDate,
+                    }}
+                    onCalculate={calcScenario}
+                  />
                 </FeatureGate>
               </>
             )}
