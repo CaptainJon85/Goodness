@@ -1,6 +1,7 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking } from 'react-native'
 import { useAuthStore } from '../../store/auth'
+import { api } from '../../lib/api'
 
 export default function SettingsScreen() {
   const user = useAuthStore((s) => s.user)
@@ -11,6 +12,26 @@ export default function SettingsScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign out', style: 'destructive', onPress: () => logout() },
     ])
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      'Delete account',
+      'Permanently delete your account and all data? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            try {
+              await api.auth.deleteAccount()
+              logout()
+            } catch (err) {
+              Alert.alert('Error', (err as Error).message)
+            }
+          },
+        },
+      ]
+    )
   }
 
   const tierBadge: Record<string, string> = { free: '🆓 Free', plus: '⭐ Plus', premium: '💎 Premium' }
@@ -49,6 +70,14 @@ export default function SettingsScreen() {
         <Text style={styles.logoutText}>Sign out</Text>
       </TouchableOpacity>
 
+      <View style={styles.dangerSection}>
+        <Text style={styles.dangerTitle}>Delete account</Text>
+        <Text style={styles.dangerDesc}>Permanently removes your account and all associated data. Cannot be undone.</Text>
+        <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount}>
+          <Text style={styles.deleteText}>Delete my account</Text>
+        </TouchableOpacity>
+      </View>
+
       <Text style={styles.version}>ClearPath v0.1.0</Text>
     </ScrollView>
   )
@@ -67,7 +96,12 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: '#f3f4f6' },
   outlineBtn: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   outlineBtnText: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  logoutBtn: { backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 20 },
+  logoutBtn: { backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 16 },
   logoutText: { fontSize: 15, fontWeight: '700', color: '#dc2626' },
+  dangerSection: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#fecaca' },
+  dangerTitle: { fontSize: 14, fontWeight: '700', color: '#b91c1c', marginBottom: 4 },
+  dangerDesc: { fontSize: 12, color: '#6b7280', marginBottom: 12 },
+  deleteBtn: { borderWidth: 1, borderColor: '#fca5a5', borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  deleteText: { fontSize: 14, fontWeight: '600', color: '#dc2626' },
   version: { textAlign: 'center', fontSize: 12, color: '#9ca3af' },
 })

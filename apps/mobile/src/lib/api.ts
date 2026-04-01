@@ -49,6 +49,7 @@ export const api = {
       ),
     me: () => request<{ id: string; email: string; name: string; kycStatus: string; subscriptionTier: string }>('/auth/me'),
     logout: () => request<void>('/auth/logout', { method: 'POST' }),
+    deleteAccount: () => request<{ message: string }>('/auth/account', { method: 'DELETE' }),
   },
 
   cards: {

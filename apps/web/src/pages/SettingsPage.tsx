@@ -8,6 +8,7 @@ export default function SettingsPage() {
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
   const [portalLoading, setPortalLoading] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   async function openPortal() {
     setPortalLoading(true)
@@ -24,6 +25,20 @@ export default function SettingsPage() {
   function handleLogout() {
     logout()
     navigate('/login')
+  }
+
+  async function handleDeleteAccount() {
+    if (!window.confirm('Permanently delete your account and all data? This cannot be undone.')) return
+    setDeleteLoading(true)
+    try {
+      await api.auth.deleteAccount()
+      logout()
+      navigate('/login')
+    } catch (err) {
+      alert((err as Error).message)
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   return (
@@ -63,6 +78,18 @@ export default function SettingsPage() {
         <h2 className="font-semibold text-gray-900 mb-3">Sign out</h2>
         <button onClick={handleLogout} className="btn-secondary text-red-600 border-red-200 hover:bg-red-50">
           Log out
+        </button>
+      </div>
+
+      <div className="card border border-red-100">
+        <h2 className="font-semibold text-red-700 mb-1">Delete account</h2>
+        <p className="text-sm text-gray-500 mb-4">Permanently removes your account and all associated data. This action cannot be undone.</p>
+        <button
+          onClick={handleDeleteAccount}
+          disabled={deleteLoading}
+          className="btn-secondary text-red-600 border-red-300 hover:bg-red-50 disabled:opacity-50"
+        >
+          {deleteLoading ? 'Deleting…' : 'Delete my account'}
         </button>
       </div>
     </div>
