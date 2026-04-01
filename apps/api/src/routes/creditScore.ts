@@ -1,11 +1,33 @@
 import { Router, Response } from 'express'
+import { z } from 'zod'
 import pool from '../db/pool'
 import { requireAuth, requireTier } from '../middleware/auth'
 import { AuthenticatedRequest } from '../types'
+import { fetchCreditScore, sandboxScore } from '../services/experian'
 
 const router = Router()
 
+function scoreBand(score: number): string {
+  if (score >= 881) return 'excellent'
+  if (score >= 671) return 'good'
+  if (score >= 561) return 'fair'
+  return 'poor'
+}
+
+function toScoreDto(r: Record<string, unknown>) {
+  return {
+    id: r.id,
+    score: r.score,
+    provider: r.provider,
+    recordedAt: r.recorded_at,
+    factors: r.factors,
+    band: scoreBand(r.score as number),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/credit-score  — latest score
+// ---------------------------------------------------------------------------
 router.get('/', requireAuth, requireTier('plus'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await pool.query(
@@ -13,26 +35,65 @@ router.get('/', requireAuth, requireTier('plus'), async (req: AuthenticatedReque
       [req.user!.id]
     )
     if (!result.rows[0]) {
-      res.status(404).json({ error: 'No credit score data. Connect Experian to begin tracking.' })
+      res.status(404).json({ error: 'No credit score data. Use POST /api/credit-score/fetch to pull your score.' })
       return
     }
-    const r = result.rows[0]
-    res.json({
-      data: {
-        id: r.id,
-        score: r.score,
-        provider: r.provider,
-        recordedAt: r.recorded_at,
-        factors: r.factors,
-        band: scoreBand(r.score),
-      },
-    })
+    res.json({ data: toScoreDto(result.rows[0]) })
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch credit score' })
   }
 })
 
-// GET /api/credit-score/history
+// ---------------------------------------------------------------------------
+// POST /api/credit-score/fetch  — trigger Experian pull and store result
+// ---------------------------------------------------------------------------
+const fetchSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  postcode: z.string().min(3),
+  addressLine1: z.string().min(1),
+})
+
+router.post('/fetch', requireAuth, requireTier('plus'), async (req: AuthenticatedRequest, res: Response) => {
+  // In sandbox mode (no Experian key), return a synthetic score
+  const hasExperian = !!(process.env.EXPERIAN_CLIENT_ID && process.env.EXPERIAN_CLIENT_SECRET)
+
+  let scored
+  if (!hasExperian) {
+    // Sandbox: seed from user id for determinism
+    const seed = req.user!.id.charCodeAt(0) % 200 + 620  // 620–819 range
+    scored = sandboxScore(seed)
+  } else {
+    const parsed = fetchSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() })
+      return
+    }
+    try {
+      scored = await fetchCreditScore(parsed.data)
+    } catch (err) {
+      console.error('Experian fetch error:', err)
+      res.status(502).json({ error: 'Failed to fetch score from Experian' })
+      return
+    }
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO credit_score_records (user_id, score, provider, factors)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.user!.id, scored.score, scored.provider, JSON.stringify(scored.factors)]
+    )
+    res.status(201).json({ data: toScoreDto(result.rows[0]) })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to store credit score' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /api/credit-score/history  — last 24 records
+// ---------------------------------------------------------------------------
 router.get('/history', requireAuth, requireTier('plus'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await pool.query(
@@ -48,12 +109,14 @@ router.get('/history', requireAuth, requireTier('plus'), async (req: Authenticat
         band: scoreBand(r.score),
       })),
     })
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch score history' })
   }
 })
 
-// GET /api/credit-score/factors
+// ---------------------------------------------------------------------------
+// GET /api/credit-score/factors  — from latest record
+// ---------------------------------------------------------------------------
 router.get('/factors', requireAuth, requireTier('plus'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await pool.query(
@@ -61,12 +124,14 @@ router.get('/factors', requireAuth, requireTier('plus'), async (req: Authenticat
       [req.user!.id]
     )
     res.json({ data: { factors: result.rows[0]?.factors ?? [] } })
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch score factors' })
   }
 })
 
-// GET /api/credit-score/projection
+// ---------------------------------------------------------------------------
+// GET /api/credit-score/projection  — utilisation-based score projection
+// ---------------------------------------------------------------------------
 router.get('/projection', requireAuth, requireTier('plus'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const [scoreResult, planResult, cardsResult] = await Promise.all([
@@ -75,38 +140,32 @@ router.get('/projection', requireAuth, requireTier('plus'), async (req: Authenti
       pool.query('SELECT balance, credit_limit FROM credit_cards WHERE user_id = $1', [req.user!.id]),
     ])
 
-    const currentScore: number = scoreResult.rows[0]?.score ?? null
-    const payoffMonths: number = planResult.rows[0]?.payoff_months ?? null
+    const currentScore: number | null = scoreResult.rows[0]?.score ?? null
+    const payoffMonths: number | null = planResult.rows[0]?.payoff_months ?? null
 
-    // Estimate score improvement based on utilisation reduction
-    // Rough model: every 10% utilisation reduction ≈ +15 score points
     const totalBalance = cardsResult.rows.reduce((s: number, c: Record<string, unknown>) => s + Number(c.balance), 0)
     const totalLimit = cardsResult.rows.reduce((s: number, c: Record<string, unknown>) => s + Number(c.credit_limit), 0)
     const currentUtil = totalLimit > 0 ? totalBalance / totalLimit : 0
-    const projectedUtilImprovement = currentUtil * 100 // goes to 0% after payoff
-    const estimatedScoreGain = Math.round((projectedUtilImprovement / 10) * 15)
-    const projectedScore = currentScore ? Math.min(999, currentScore + estimatedScoreGain) : null
+
+    // Heuristic: every 10% utilisation drop → ~15 point gain (rough industry estimate)
+    const projectedUtilDrop = currentUtil * 100  // drop to 0% after payoff
+    const estimatedScoreGain = Math.round((projectedUtilDrop / 10) * 15)
+    const projectedScore = currentScore != null ? Math.min(999, currentScore + estimatedScoreGain) : null
 
     res.json({
       data: {
         currentScore,
         projectedScore,
         estimatedScoreGain,
+        currentUtilisation: Math.round(currentUtil * 100 * 10) / 10,
         payoffMonths,
         projectedPayoffDate: planResult.rows[0]?.projected_payoff_date ?? null,
-        methodology: 'Estimated based on utilisation reduction from repayment plan. Actual score changes vary.',
+        methodology: 'Estimated based on utilisation reduction from your repayment plan. Actual score changes vary and depend on many factors.',
       },
     })
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to compute score projection' })
   }
 })
-
-function scoreBand(score: number): string {
-  if (score >= 881) return 'excellent'
-  if (score >= 671) return 'good'
-  if (score >= 561) return 'fair'
-  return 'poor'
-}
 
 export default router

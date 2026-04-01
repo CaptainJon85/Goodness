@@ -53,6 +53,8 @@ export const api = {
     update: (id: string, data: Partial<import('@clearpath/shared').CreditCard>) =>
       request<import('@clearpath/shared').CreditCard>(`/cards/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => request<{ deleted: boolean }>(`/cards/${id}`, { method: 'DELETE' }),
+    openBankingConnect: () => request<{ authUrl: string }>('/cards/open-banking/connect'),
+    syncCard: (id: string) => request<import('@clearpath/shared').CreditCard>(`/cards/open-banking/sync/${id}`, { method: 'POST' }),
   },
 
   // Repayment
@@ -86,7 +88,11 @@ export const api = {
   creditScore: {
     latest: () => request<{ score: number; band: string; provider: string; recordedAt: string; factors: import('@clearpath/shared').ScoreFactor[] }>('/credit-score'),
     history: () => request<{ score: number; band: string; recordedAt: string }[]>('/credit-score/history'),
-    projection: () => request<{ currentScore: number; projectedScore: number; estimatedScoreGain: number; payoffMonths: number }>('/credit-score/projection'),
+    projection: () => request<{ currentScore: number; projectedScore: number; estimatedScoreGain: number; currentUtilisation: number; payoffMonths: number }>('/credit-score/projection'),
+    fetch: (data: { firstName: string; lastName: string; dateOfBirth: string; postcode: string; addressLine1: string }) =>
+      request<{ score: number; band: string; factors: import('@clearpath/shared').ScoreFactor[] }>('/credit-score/fetch', {
+        method: 'POST', body: JSON.stringify(data),
+      }),
   },
 
   // Virtual card
