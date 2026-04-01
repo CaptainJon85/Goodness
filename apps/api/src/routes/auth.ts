@@ -157,4 +157,38 @@ router.post('/kyc/complete', requireAuth, async (req: AuthenticatedRequest, res:
   }
 })
 
+// DELETE /api/auth/account  — GDPR right-to-erasure
+// Cascades: transactions → virtual_cards → repayment_plans → credit_score_records → credit_cards → users
+// Also deletes the Supabase Auth identity so the email can be re-registered.
+router.delete('/account', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    // Delete in dependency order (FK children first)
+    await client.query('DELETE FROM transactions WHERE user_id = $1', [userId])
+    await client.query('DELETE FROM virtual_cards WHERE user_id = $1', [userId])
+    await client.query('DELETE FROM repayment_plans WHERE user_id = $1', [userId])
+    await client.query('DELETE FROM credit_score_records WHERE user_id = $1', [userId])
+    await client.query('DELETE FROM credit_cards WHERE user_id = $1', [userId])
+    await client.query('DELETE FROM users WHERE id = $1', [userId])
+
+    await client.query('COMMIT')
+
+    // Remove from Supabase Auth (best-effort — don't fail the response if this errors)
+    supabase.auth.admin.deleteUser(userId).catch((e) =>
+      console.error('Supabase auth delete failed for', userId, e)
+    )
+
+    res.json({ data: { message: 'Account and all associated data deleted.' } })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('Account deletion error:', err)
+    res.status(500).json({ error: 'Account deletion failed' })
+  } finally {
+    client.release()
+  }
+})
+
 export default router
