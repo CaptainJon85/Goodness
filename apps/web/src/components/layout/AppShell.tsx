@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, CreditCard, TrendingDown, Star, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, CreditCard, TrendingDown, Star, Wallet, Settings, LogOut } from 'lucide-react'
 import { useAuthStore } from '../../store/auth'
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
   { to: '/cards', label: 'My Cards', Icon: CreditCard },
   { to: '/repayment', label: 'Repayment Plan', Icon: TrendingDown },
   { to: '/credit-score', label: 'Credit Score', Icon: Star },
+  { to: '/virtual-card', label: 'Virtual Card', Icon: Wallet },
   { to: '/settings', label: 'Settings', Icon: Settings },
 ]
 

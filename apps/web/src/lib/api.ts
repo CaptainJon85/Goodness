@@ -103,5 +103,6 @@ export const api = {
     setRoutingMode: (routingMode: string) =>
       request<{ routingMode: string }>('/virtual-card/routing-mode', { method: 'PATCH', body: JSON.stringify({ routingMode }) }),
     transactions: () => request<import('@clearpath/shared').Transaction[]>('/virtual-card/transactions'),
+    details: () => request<{ maskedPan: string; expiryDate: string }>('/virtual-card/details'),
   },
 }

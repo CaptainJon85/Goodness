@@ -10,6 +10,7 @@ import RepaymentPage from './pages/RepaymentPage'
 import CreditScorePage from './pages/CreditScorePage'
 import PricingPage from './pages/PricingPage'
 import SettingsPage from './pages/SettingsPage'
+import VirtualCardPage from './pages/VirtualCardPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="cards/:id/edit" element={<EditCardPage />} />
           <Route path="repayment" element={<RepaymentPage />} />
           <Route path="credit-score" element={<CreditScorePage />} />
+          <Route path="virtual-card" element={<VirtualCardPage />} />
           <Route path="pricing" element={<PricingPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
