@@ -19,7 +19,7 @@ const modes: { id: RoutingMode; icon: typeof Gift; label: string; description: s
     id: 'protect_score',
     icon: Shield,
     label: 'Protect credit score',
-    description: 'Keeps each card's utilisation below 30% — the key threshold for credit score health.',
+    description: "Keeps each card's utilisation below 30% — the key threshold for credit score health.",
   },
 ]
 

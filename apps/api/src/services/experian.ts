@@ -57,7 +57,7 @@ async function getAccessToken(): Promise<string> {
     throw new Error(`Experian auth failed: ${res.status}`)
   }
 
-  const data: ExperianTokenResponse = await res.json()
+  const data = await res.json() as ExperianTokenResponse
   return data.access_token
 }
 
@@ -112,7 +112,7 @@ export async function fetchCreditScore(personalData: {
     throw new Error(`Experian score fetch failed (${res.status}): ${body}`)
   }
 
-  const data: ExperianScoreResponse = await res.json()
+  const data = await res.json() as ExperianScoreResponse
 
   const factors: ScoreFactor[] = (data.factors ?? []).map((f) => ({
     type: f.positiveOrNegative === 'P' ? 'positive' : 'negative',

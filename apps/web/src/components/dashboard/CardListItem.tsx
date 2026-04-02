@@ -11,7 +11,7 @@ interface CardListItemProps {
 }
 
 export default function CardListItem({ card, onDelete, onEdit }: CardListItemProps) {
-  const days = daysUntil(card.paymentDueDate as string | null)
+  const days = daysUntil(card.paymentDueDate as string)
   const dueSoon = days !== Infinity && days <= 5
 
   return (

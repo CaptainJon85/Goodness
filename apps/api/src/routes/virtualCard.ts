@@ -323,3 +323,5 @@ async function processWebhook(payload: ModulrWebhookPayload) {
     `Routed £${(data.amount / 100).toFixed(2)} at ${data.merchantName} → ${decision.cardNickname} (${vc.routing_mode})`
   )
 }
+
+export default router

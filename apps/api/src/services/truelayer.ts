@@ -81,7 +81,7 @@ export async function exchangeCode(code: string): Promise<TokenResponse> {
     const err = await res.text()
     throw new Error(`TrueLayer token exchange failed: ${err}`)
   }
-  return res.json()
+  return await res.json() as TokenResponse
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
@@ -96,19 +96,20 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
     }),
   })
   if (!res.ok) throw new Error('TrueLayer token refresh failed')
-  return res.json()
+  return await res.json() as TokenResponse
 }
 
 // ---------------------------------------------------------------------------
 // Data fetch
 // ---------------------------------------------------------------------------
 
-async function tlFetch(path: string, accessToken: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function tlFetch(path: string, accessToken: string): Promise<any> {
   const res = await fetch(`${TRUELAYER_BASE}${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!res.ok) throw new Error(`TrueLayer API error on ${path}: ${res.status}`)
-  return res.json()
+  return await res.json()
 }
 
 export interface TrueLayerCard {

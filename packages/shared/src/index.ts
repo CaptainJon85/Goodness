@@ -19,7 +19,7 @@ export interface CreditCard {
   creditLimit: number      // in pence
   apr: number              // e.g. 26.4
   minimumPayment: number   // in pence
-  paymentDueDate: Date
+  paymentDueDate: string | null
   connectionType: 'open_banking' | 'screenshot' | 'manual'
   truelayerAccountId?: string
   lastSyncedAt: Date
