@@ -1,0 +1,9 @@
+{
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@clearpath/shared": ["../../packages/shared/src/index.ts"]
+    }
+  }
+}
